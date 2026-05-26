@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowTimer - 番茄钟 & 时间统计</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: #0b0f1a;
+            color: #c8d0dc;
+            min-height: 100vh;
+        }
+        header { text-align: center; padding: 32px 20px 8px; }
+        header h1 { font-size: 28px; font-weight: 800; }
+        header h1 span { background: linear-gradient(135deg, #f43f5e, #fb923c); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        header p { color: #374151; font-size: 13px; margin-top: 4px; }
+
+        .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+        /* 顶部计时器 */
+        .timer-card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 24px;
+            padding: 40px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .timer-card::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle at center, rgba(244,63,94,0.03) 0%, transparent 60%);
+            pointer-events: none;
+        }
+        .timer-mode-row { display: flex; justify-content: center; gap: 6px; margin-bottom: 28px; position: relative; }
+        .mode-btn {
+            padding: 8px 20px;
+            background: transparent; border: 1px solid #1f2937;
+            color: #4b5563; border-radius: 20px;
+            cursor: pointer; font-size: 13px; font-weight: 500; transition: 0.2s;
+        }
+        .mode-btn:hover { color: #9ca3af; border-color: #374151; }
+        .mode-btn.active { background: #f43f5e; color: white; border-color: #f43f5e; }
+        .mode-btn.active.break { background: #10b981; border-color: #10b981; }
+        .mode-btn.active.long-break { background: #3b82f6; border-color: #3b82f6; }
+
+        .timer-ring {
+            width: 280px; height: 280px;
+            margin: 0 auto 28px;
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .timer-ring svg { position: absolute; top: 0; left: 0; transform: rotate(-90deg); }
+        .ring-bg { fill: none; stroke: #1f2937; stroke-width: 6; }
+        .ring-progress { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+        .timer-display {
+            font-size: 56px; font-weight: 800;
+            font-family: 'Fira Code', monospace;
+            letter-spacing: 2px;
+            position: relative;
+        }
+        .timer-label { font-size: 14px; color: #4b5563; margin-top: 4px; position: relative; }
+
+        .timer-controls { display: flex; justify-content: center; gap: 10px; position: relative; }
+        .tc-btn {
+            padding: 12px 32px;
+            border: none; border-radius: 14px;
+            font-size: 15px; font-weight: 600;
+            cursor: pointer; transition: 0.2s;
+        }
+        .tc-btn.start { background: #f43f5e; color: white; }
+        .tc-btn.start:hover { background: #e11d48; }
+        .tc-btn.pause { background: #374151; color: #d1d5db; }
+        .tc-btn.pause:hover { background: #4b5563; }
+        .tc-btn.reset { background: transparent; border: 1px solid #1f2937; color: #4b5563; }
+        .tc-btn.reset:hover { border-color: #374151; color: #9ca3af; }
+        .tc-btn.skip { background: transparent; border: 1px solid #1f2937; color: #4b5563; }
+
+        /* 任务 */
+        .task-section {
+            margin: 24px 0;
+            display: flex; gap: 8px; justify-content: center; align-items: center;
+        }
+        .task-input {
+            padding: 10px 18px; width: 300px;
+            background: #1f2937; border: 1px solid #374151;
+            color: white; border-radius: 12px; font-size: 14px; outline: none;
+        }
+        .task-input:focus { border-color: #f43f5e; }
+        .task-input::placeholder { color: #374151; }
+
+        /* 统计仪表盘 */
+        .dashboard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+        .stat-card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-value { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+        .stat-label { font-size: 12px; color: #4b5563; }
+        .stat-card:nth-child(1) .stat-value { color: #f43f5e; }
+        .stat-card:nth-child(2) .stat-value { color: #fb923c; }
+        .stat-card:nth-child(3) .stat-value { color: #10b981; }
+        .stat-card:nth-child(4) .stat-value { color: #3b82f6; }
+
+        /* 周报图表 */
+        .chart-card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .chart-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+        .chart-toggle { display: flex; gap: 4px; }
+        .ct-btn {
+            padding: 4px 12px; background: transparent;
+            border: 1px solid #1f2937; color: #4b5563;
+            border-radius: 12px; cursor: pointer; font-size: 11px; transition: 0.2s;
+        }
+        .ct-btn:hover { color: #9ca3af; }
+        .ct-btn.active { border-color: #f43f5e; color: #f43f5e; }
+        .bar-chart { display: flex; align-items: flex-end; justify-content: space-around; height: 180px; padding-top: 10px; }
+        .bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .bar {
+            width: 36px; border-radius: 6px 6px 0 0;
+            transition: height 0.5s ease; min-height: 4px;
+            position: relative;
+        }
+        .bar-val { font-size: 11px; color: #4b5563; position: absolute; top: -18px; width: 100%; text-align: center; }
+        .bar-label { font-size: 11px; color: #374151; }
+
+        /* 历史记录 */
+        .history-card {
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 20px;
+            padding: 24px;
+        }
+        .history-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; justify-content: space-between; }
+        .hist-list { max-height: 300px; overflow-y: auto; }
+        .hist-item {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 14px;
+            border-bottom: 1px solid #0d1117;
+            transition: 0.15s;
+        }
+        .hist-item:hover { background: rgba(255,255,255,0.02); }
+        .hist-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .hist-content { flex: 1; }
+        .hist-task { font-size: 13px; font-weight: 500; }
+        .hist-time { font-size: 11px; color: #374151; margin-top: 2px; }
+        .hist-dur { font-size: 12px; color: #4b5563; font-weight: 600; }
+        .hist-empty { text-align: center; color: #1f2937; padding: 30px; }
+
+        /* 设置面板 */
+        .settings-row {
+            display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center;
+        }
+        .set-item {
+            background: #111827; border: 1px solid #1f2937;
+            border-radius: 12px; padding: 12px 18px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .set-label { font-size: 12px; color: #4b5563; }
+        .set-input {
+            width: 50px; padding: 4px 8px;
+            background: #0d1117; border: 1px solid #1f2937;
+            color: white; border-radius: 6px; font-size: 13px;
+            text-align: center; outline: none;
+        }
+        .set-input:focus { border-color: #f43f5e; }
+        .set-unit { font-size: 11px; color: #374151; }
+
+        .toast {
+            position: fixed; bottom: 30px; left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: #111827; border: 1px solid #1f2937;
+            color: white; padding: 10px 24px; border-radius: 12px;
+            font-size: 13px; opacity: 0; transition: 0.3s; z-index: 200;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        @media (max-width: 768px) {
+            .dashboard { grid-template-columns: repeat(2, 1fr); }
+            .timer-display { font-size: 40px; }
+            .timer-ring { width: 220px; height: 220px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🍅 Flow<span>Timer</span></h1>
+        <p>番茄钟专注计时 + 数据统计仪表盘</p>
+    </header>
+
+    <div class="container">
+        <!-- 设置 -->
+        <div class="settings-row">
+            <div class="set-item">
+                <span class="set-label">专注时长</span>
+                <input class="set-input" id="setWork" type="number" value="25" min="1" max="90" onchange="updateSettings()">
+                <span class="set-unit">分钟</span>
+            </div>
+            <div class="set-item">
+                <span class="set-label">短休息</span>
+                <input class="set-input" id="setBreak" type="number" value="5" min="1" max="30" onchange="updateSettings()">
+                <span class="set-unit">分钟</span>
+            </div>
+            <div class="set-item">
+                <span class="set-label">长休息</span>
+                <input class="set-input" id="setLong" type="number" value="15" min="5" max="60" onchange="updateSettings()">
+                <span class="set-unit">分钟</span>
+            </div>
+            <div class="set-item">
+                <span class="set-label">长休息间隔</span>
+                <input class="set-input" id="setInterval" type="number" value="4" min="2" max="8" onchange="updateSettings()">
+                <span class="set-unit">轮</span>
+            </div>
+        </div>
+
+        <!-- 计时器 -->
+        <div class="timer-card">
+            <div class="timer-mode-row">
+                <button class="mode-btn active" id="modeWork" onclick="switchMode('work')">🍅 专注</button>
+                <button class="mode-btn" id="modeBreak" onclick="switchMode('break')">☕ 短休息</button>
+                <button class="mode-btn" id="modeLong" onclick="switchMode('longBreak')">🌿 长休息</button>
+            </div>
+
+            <div class="timer-ring">
+                <svg width="280" height="280" viewBox="0 0 280 280">
+                    <circle class="ring-bg" cx="140" cy="140" r="130"></circle>
+                    <circle class="ring-progress" id="ringProgress" cx="140" cy="140" r="130"
+                        stroke="#f43f5e" stroke-dasharray="816.81" stroke-dashoffset="0"></circle>
+                </svg>
+                <div>
+                    <div class="timer-display" id="timerDisplay">25:00</div>
+                    <div class="timer-label" id="timerLabel">准备开始</div>
+                </div>
+            </div>
+
+            <div class="task-section">
+                <input class="task-input" id="taskInput" placeholder="当前专注的任务是...">
+            </div>
+
+            <div class="timer-controls">
+                <button class="tc-btn start" id="startBtn" onclick="toggleTimer()">▶ 开始</button>
+                <button class="tc-btn reset" onclick="resetTimer()">⟳ 重置</button>
+                <button class="tc-btn skip" onclick="skipTimer()">⏭ 跳过</button>
+            </div>
+        </div>
+
+        <!-- 统计 -->
+        <div class="dashboard">
+            <div class="stat-card">
+                <div class="stat-value" id="statToday">0</div>
+                <div class="stat-label">今日番茄</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statMinutes">0</div>
+                <div class="stat-label">专注分钟</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statStreak">0</div>
+                <div class="stat-label">连续天数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">0</div>
+                <div class="stat-label">累计番茄</div>
+            </div>
+        </div>
+
+        <!-- 周图表 -->
+        <div class="chart-card">
+            <div class="chart-title">
+                📊 本周专注统计
+                <div class="chart-toggle">
+                    <button class="ct-btn active" id="ctPomodoros" onclick="setChartType('pomodoros')">番茄数</button>
+                    <button class="ct-btn" id="ctMinutes" onclick="setChartType('minutes')">分钟数</button>
+                </div>
+            </div>
+            <div class="bar-chart" id="barChart"></div>
+        </div>
+
+        <!-- 历史 -->
+        <div class="history-card">
+            <h3>
+                📜 专注记录
+                <button style="background:none;border:none;color:#374151;cursor:pointer;font-size:12px;" onclick="clearHistory()">🗑 清空</button>
+            </h3>
+            <div class="hist-list" id="histList"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ========== 状态 ==========
+        let config = {
+            work: 25, break: 5, longBreak: 15, interval: 4
+        };
+        let mode = 'work'; // work, break, longBreak
+        let timeLeft = config.work * 60; // 秒
+        let totalTime = config.work * 60;
+        let isRunning = false;
+        let timerInterval = null;
+        let pomodoroCount = 0; // 当前连续轮次
+        let chartType = 'pomodoros';
+
+        let records = JSON.parse(localStorage.getItem('flowtimer_records') || '[]');
+
+        // ========== 设置 ==========
+        function updateSettings() {
+            config.work = parseInt(document.getElementById('setWork').value) || 25;
+            config.break = parseInt(document.getElementById('setBreak').value) || 5;
+            config.longBreak = parseInt(document.getElementById('setLong').value) || 15;
+            config.interval = parseInt(document.getElementById('setInterval').value) || 4;
+            localStorage.setItem('flowtimer_config', JSON.stringify(config));
+            resetTimer();
+        }
+
+        function loadSettings() {
+            const s = localStorage.getItem('flowtimer_config');
+            if (s) {
+                config = JSON.parse(s);
+                document.getElementById('setWork').value = config.work;
+                document.getElementById('setBreak').value = config.break;
+                document.getElementById('setLong').value = config.longBreak;
+                document.getElementById('setInterval').value = config.interval;
+            }
+        }
+
+        // ========== 模式切换 ==========
+        function switchMode(m) {
+            stopTimer();
+            mode = m;
+            document.getElementById('modeWork').className = `mode-btn ${m === 'work' ? 'active' : ''}`;
+            document.getElementById('modeBreak').className = `mode-btn ${m === 'break' ? 'active break' : ''}`;
+            document.getElementById('modeLong').className = `mode-btn ${m === 'longBreak' ? 'active long-break' : ''}`;
+
+            const ring = document.getElementById('ringProgress');
+            if (m === 'work') {
+                totalTime = config.work * 60;
+                ring.setAttribute('stroke', '#f43f5e');
+            } else if (m === 'break') {
+                totalTime = config.break * 60;
+                ring.setAttribute('stroke', '#10b981');
+            } else {
+                totalTime = config.longBreak * 60;
+                ring.setAttribute('stroke', '#3b82f6');
+            }
+            timeLeft = totalTime;
+            updateDisplay();
+            document.getElementById('timerLabel').textContent = m === 'work' ? '准备专注' : '休息一下';
+        }
+
+        // ========== 计时器 ==========
+        function toggleTimer() {
+            if (isRunning) {
+                stopTimer();
+            } else {
+                startTimer();
+            }
+        }
+
+        function startTimer() {
+            isRunning = true;
+            document.getElementById('startBtn').textContent = '⏸ 暂停';
+            document.getElementById('startBtn').className = 'tc-btn pause';
+            document.getElementById('timerLabel').textContent = mode === 'work' ? '专注中...' : '休息中...';
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateDisplay();
+
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    timerComplete();
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            isRunning = false;
+            if (timerInterval) clearInterval(timerInterval);
+            document.getElementById('startBtn').textContent = '▶ 开始';
+            document.getElementById('startBtn').className = 'tc-btn start';
+        }
+
+        function resetTimer() {
+            stopTimer();
+            switchMode(mode);
+        }
+
+        function skipTimer() {
+            stopTimer();
+            timerComplete();
+        }
+
+        function timerComplete() {
+            // 播放提示音
+            playBeep();
+
+            if (mode === 'work') {
+                pomodoroCount++;
+                // 记录
+                const task = document.getElementById('taskInput').value || '未命名任务';
+                records.unshift({
+                    task, duration: config.work, mode: 'work',
+                    time: Date.now(), date: new Date().toDateString()
+                });
+                localStorage.setItem('flowtimer_records', JSON.stringify(records));
+                updateStats();
+                renderHistory();
+                renderChart();
+
+                showToast(`🍅 完成！第 ${pomodoroCount} 个番茄`);
+
+                // 判断长休息
+                if (pomodoroCount % config.interval === 0) {
+                    switchMode('longBreak');
+                } else {
+                    switchMode('break');
+                }
+            } else {
+                showToast('☕ 休息结束，继续加油！');
+                switchMode('work');
+            }
+        }
+
+        function updateDisplay() {
+            const min = Math.floor(timeLeft / 60);
+            const sec = timeLeft % 60;
+            document.getElementById('timerDisplay').textContent =
+                `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+
+            // 更新环形进度
+            const progress = 1 - (timeLeft / totalTime);
+            const circumference = 2 * Math.PI * 130; // r=130
+            const offset = circumference * (1 - progress);
+            document.getElementById('ringProgress').style.strokeDashoffset = offset;
+
+            // 更新页面标题
+            document.title = `${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')} - FlowTimer`;
+        }
+
+        // ========== 统计 ==========
+        function updateStats() {
+            const today = new Date().toDateString();
+            const todayRecords = records.filter(r => r.date === today && r.mode === 'work');
+            document.getElementById('statToday').textContent = todayRecords.length;
+            document.getElementById('statMinutes').textContent = todayRecords.reduce((s, r) => s + r.duration, 0);
+            document.getElementById('statTotal').textContent = records.filter(r => r.mode === 'work').length;
+
+            // 连续天数
+            let streak = 0;
+            const days = [...new Set(records.filter(r => r.mode === 'work').map(r => r.date))];
+            const now = new Date();
+            for (let i = 0; i < 365; i++) {
+                const d = new Date(now - i * 86400000).toDateString();
+                if (days.includes(d)) streak++;
+                else if (i > 0) break;
+            }
+            document.getElementById('statStreak').textContent = streak;
+        }
+
+        // ========== 图表 ==========
+        function setChartType(type) {
+            chartType = type;
+            document.getElementById('ctPomodoros').classList.toggle('active', type === 'pomodoros');
+            document.getElementById('ctMinutes').classList.toggle('active', type === 'minutes');
+            renderChart();
+        }
+
+        function renderChart() {
+            const chart = document.getElementById('barChart');
+            const dayNames = ['日','一','二','三','四','五','六'];
+            const now = new Date();
+            const weekData = [];
+
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(now - i * 86400000);
+                const dateStr = d.toDateString();
+                const dayRecords = records.filter(r => r.date === dateStr && r.mode === 'work');
+                weekData.push({
+                    label: dayNames[d.getDay()],
+                    count: dayRecords.length,
+                    minutes: dayRecords.reduce((s, r) => s + r.duration, 0),
+                    isToday: i === 0
+                });
+            }
+
+            const maxVal = Math.max(1, ...weekData.map(d => chartType === 'pomodoros' ? d.count : d.minutes));
+
+            chart.innerHTML = weekData.map(d => {
+                const val = chartType === 'pomodoros' ? d.count : d.minutes;
+                const h = Math.max(4, (val / maxVal) * 160);
+                const color = d.isToday ? '#f43f5e' : '#374151';
+                return `
+                    <div class="bar-wrap">
+                        <div class="bar" style="height:${h}px;background:${color};">
+                            ${val > 0 ? `<div class="bar-val">${val}</div>` : ''}
+                        </div>
+                        <span class="bar-label" style="${d.isToday ? 'color:#f43f5e;font-weight:600;' : ''}">${d.label}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ========== 历史 ==========
+        function renderHistory() {
+            const list = document.getElementById('histList');
+            const workRecords = records.filter(r => r.mode === 'work').slice(0, 20);
+            if (workRecords.length === 0) {
+                list.innerHTML = '<div class="hist-empty">🍅 完成第一个番茄后这里会显示记录</div>';
+                return;
+            }
+            list.innerHTML = workRecords.map(r => {
+                const time = new Date(r.time);
+                const timeStr = `${time.getMonth()+1}/${time.getDate()} ${String(time.getHours()).padStart(2,'0')}:${String(time.getMinutes()).padStart(2,'0')}`;
+                return `
+                    <div class="hist-item">
+                        <div class="hist-dot" style="background:#f43f5e;"></div>
+                        <div class="hist-content">
+                            <div class="hist-task">${escHtml(r.task)}</div>
+                            <div class="hist-time">${timeStr}</div>
+                        </div>
+                        <div class="hist-dur">${r.duration} 分钟</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function clearHistory() {
+            if (!confirm('确定清空所有记录？')) return;
+            records = [];
+            localStorage.removeItem('flowtimer_records');
+            updateStats(); renderChart(); renderHistory();
+            showToast('🗑 记录已清空');
+        }
+
+        // ========== 音效 ==========
+        function playBeep() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.8);
+
+                // 第二声
+                setTimeout(() => {
+                    const osc2 = audioCtx.createOscillator();
+                    const gain2 = audioCtx.createGain();
+                    osc2.connect(gain2); gain2.connect(audioCtx.destination);
+                    osc2.frequency.setValueAtTime(1000, audioCtx.currentTime);
+                    gain2.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+                    osc2.start(); osc2.stop(audioCtx.currentTime + 0.6);
+                }, 300);
+            } catch (e) {}
+        }
+
+        // ========== 工具 ==========
+        function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg; t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2500);
+        }
+
+        // ========== 快捷键 ==========
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            if (e.code === 'Space') { e.preventDefault(); toggleTimer(); }
+            if (e.key === 'r') resetTimer();
+        });
+
+        // ========== 初始化 ==========
+        loadSettings();
+        switchMode('work');
+        updateStats();
+        renderChart();
+        renderHistory();
+    </script>
+</body>
+</html>
